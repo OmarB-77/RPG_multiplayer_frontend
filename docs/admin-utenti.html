@@ -35,6 +35,13 @@
       <h2>Utenti</h2>
       <div id="lista"><p class="muted">Caricamento...</p></div>
     </section>
+
+    <section class="card">
+      <h2>Keep-alive Supabase</h2>
+      <p class="muted">Esegue un ping per generare attivita' ed evitare che il progetto venga messo in pausa per inattivita'.</p>
+      <p>Ultimo keep-alive: <strong id="ka-last">...</strong></p>
+      <button id="ka-btn" type="button">Esegui keep-alive ora</button>
+    </section>
   </main>
   <script type="module">
     import { supabase } from "./js/config.js";
@@ -158,8 +165,39 @@
       pwd.value = genPassword();
     });
 
+    // ---- Keep-alive Supabase ----
+    const kaLast = document.getElementById("ka-last");
+    const kaBtn = document.getElementById("ka-btn");
+
+    function fmt(ts) {
+      if (!ts) return "Mai";
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return "-";
+      return d.toLocaleString("it-IT", {
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+      });
+    }
+
+    async function loadLastPing() {
+      const { data, error } = await supabase.from("keep_alive").select("last_ping").eq("id", 1).maybeSingle();
+      kaLast.textContent = error ? "Non disponibile" : fmt(data && data.last_ping);
+    }
+
+    kaBtn.addEventListener("click", async () => {
+      msg.hidden = true;
+      kaBtn.disabled = true;
+      const label = kaBtn.textContent;
+      kaBtn.textContent = "Esecuzione in corso...";
+      const { data, error } = await supabase.rpc("ping_keep_alive");
+      kaBtn.disabled = false;
+      kaBtn.textContent = label;
+      if (error) return showMsg(msg, "Errore durante il keep-alive: " + error.message);
+      kaLast.textContent = fmt(data);
+      showMsg(msg, "Keep-alive eseguito", "ok");
+    });
+
     pwd.value = genPassword();
-    await loadUsers();
+    await Promise.all([loadUsers(), loadLastPing()]);
   </script>
 </body>
 </html>
