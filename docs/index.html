@@ -8,27 +8,109 @@
 </head>
 <body>
   <header class="app">
-    <h1>Cronache del Master</h1>
-    <button id="logout" class="secondary" type="button">Esci</button>
+    <h1 id="saluto">Cronache del Master</h1>
+    <nav>
+      <a id="link-admin" class="btn secondary" href="admin-utenti.html" hidden>Gestione utenti</a>
+      <a class="btn secondary" href="cambia-password.html">Cambia password</a>
+      <button id="logout" class="secondary" type="button">Esci</button>
+    </nav>
   </header>
   <main>
+    <div id="msg" class="msg" hidden></div>
+
     <section class="card">
-      <h2 id="saluto">Benvenuto</h2>
-      <p class="muted">Accesso effettuato. La lobby con le campagne e le avventure arriva nella prossima fase.</p>
-      <p>
-        <a id="link-admin" class="btn" href="admin-utenti.html" hidden>Gestione utenti</a>
-        <a class="btn secondary" style="background:transparent;color:inherit;border:1px solid var(--border)" href="cambia-password.html">Cambia password</a>
-      </p>
+      <h2>Le mie campagne</h2>
+      <div id="lista"><p class="muted">Caricamento...</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Nuova campagna</h2>
+      <form id="form-nuova" novalidate>
+        <label for="nome">Nome della campagna</label>
+        <div class="row">
+          <input id="nome" type="text" maxlength="80" autocomplete="off" required>
+          <button type="submit">Crea</button>
+        </div>
+        <p class="muted">Puoi giocarla da solo o invitare altri con il codice che troverai nella campagna.</p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Unisciti con un codice</h2>
+      <form id="form-codice" novalidate>
+        <label for="codice">Codice invito</label>
+        <div class="row">
+          <input id="codice" type="text" maxlength="32" autocomplete="off" required>
+          <button type="submit">Entra</button>
+        </div>
+      </form>
     </section>
   </main>
   <script type="module">
-    import { requireAuth, logout } from "./js/auth.js";
+    import { supabase } from "./js/config.js";
+    import { requireAuth, logout, showMsg } from "./js/auth.js";
+
     const profile = await requireAuth();
-    if (profile) {
-      document.getElementById("saluto").textContent = "Ciao, " + profile.display_name;
-      if (profile.role === "admin") document.getElementById("link-admin").hidden = false;
-    }
+    if (!profile) throw new Error("Accesso negato");
+
+    const msg = document.getElementById("msg");
+    const lista = document.getElementById("lista");
+    const STATI = { setup: "In preparazione", characters: "Creazione personaggi", playing: "In corso", archived: "Archiviata" };
+
+    document.getElementById("saluto").textContent = "Ciao, " + profile.display_name;
+    if (profile.role === "admin") document.getElementById("link-admin").hidden = false;
     document.getElementById("logout").addEventListener("click", logout);
+
+    async function loadCampaigns() {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("id, name, status, owner_id, created_at")
+        .order("created_at", { ascending: false });
+      lista.replaceChildren();
+      if (error) { lista.textContent = "Errore nel caricamento delle campagne"; return; }
+      if (!data.length) {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "Non hai ancora nessuna campagna. Creane una o unisciti con un codice.";
+        lista.append(p);
+        return;
+      }
+      for (const c of data) {
+        const a = document.createElement("a");
+        a.className = "camp";
+        a.href = "campagna.html?id=" + encodeURIComponent(c.id);
+        const t = document.createElement("div");
+        t.className = "t";
+        t.textContent = c.name;
+        const s = document.createElement("div");
+        s.className = "muted";
+        s.textContent = (STATI[c.status] || c.status) + (c.owner_id === profile.id ? " · sei il creatore" : "");
+        a.append(t, s);
+        lista.append(a);
+      }
+    }
+
+    document.getElementById("form-nuova").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.hidden = true;
+      const name = document.getElementById("nome").value.trim();
+      if (name.length < 2) return showMsg(msg, "Il nome deve avere almeno 2 caratteri");
+      const { data, error } = await supabase.rpc("create_campaign", { p_name: name });
+      if (error) return showMsg(msg, error.message);
+      location.href = "campagna.html?id=" + encodeURIComponent(data);
+    });
+
+    document.getElementById("form-codice").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.hidden = true;
+      const code = document.getElementById("codice").value.trim();
+      if (code.length < 4) return showMsg(msg, "Inserisci il codice invito");
+      const { data, error } = await supabase.rpc("join_campaign", { p_code: code });
+      if (error) return showMsg(msg, error.message);
+      location.href = "campagna.html?id=" + encodeURIComponent(data);
+    });
+
+    await loadCampaigns();
   </script>
 </body>
 </html>

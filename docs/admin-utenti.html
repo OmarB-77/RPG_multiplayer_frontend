@@ -9,7 +9,7 @@
 <body>
   <header class="app">
     <h1>Gestione utenti</h1>
-    <a class="btn secondary" style="background:transparent;color:inherit;border:1px solid var(--border)" href="index.html">Home</a>
+    <a class="btn secondary" href="index.html">Home</a>
   </header>
   <main>
     <div id="msg" class="msg" hidden></div>
@@ -155,6 +155,7 @@
         "Account creato. Comunica a " + display_name + " la password provvisoria: " + password);
       btn.disabled = false;
       e.target.reset();
+      pwd.value = genPassword();
     });
 
     pwd.value = genPassword();

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campagna - Cronache del Master</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app">
+    <h1 id="titolo">Campagna</h1>
+    <nav><a class="btn secondary" href="index.html">Le mie campagne</a></nav>
+  </header>
+  <main>
+    <div id="msg" class="msg" hidden></div>
+
+    <section class="card" id="card-info" hidden>
+      <h2>Stato</h2>
+      <p id="stato"></p>
+      <p class="muted">La preparazione (sistema di gioco, tono, personaggi) e la partita con il Master arrivano nelle prossime fasi.</p>
+    </section>
+
+    <section class="card" id="card-invito" hidden>
+      <h2>Codice invito</h2>
+      <div class="row">
+        <span class="code" id="codice"></span>
+        <button id="copia" class="secondary" type="button">Copia</button>
+      </div>
+      <p class="muted">Chi ha un account e riceve questo codice puo' unirsi dalla propria home. Se giochi da solo, non serve.</p>
+    </section>
+
+    <section class="card" id="card-membri" hidden>
+      <h2>Giocatori</h2>
+      <div id="membri"></div>
+    </section>
+  </main>
+  <script type="module">
+    import { supabase } from "./js/config.js";
+    import { requireAuth, showMsg } from "./js/auth.js";
+
+    const profile = await requireAuth();
+    if (!profile) throw new Error("Accesso negato");
+
+    const msg = document.getElementById("msg");
+    const STATI = { setup: "In preparazione", characters: "Creazione personaggi", playing: "In corso", archived: "Archiviata" };
+    const id = new URLSearchParams(location.search).get("id");
+
+    if (!id) {
+      showMsg(msg, "Campagna non specificata");
+    } else {
+      // Le regole RLS restituiscono la campagna solo ai suoi membri.
+      const { data: c, error } = await supabase
+        .from("campaigns")
+        .select("id, name, status, invite_code, owner_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error || !c) {
+        showMsg(msg, "Campagna non trovata o non accessibile");
+      } else {
+        document.getElementById("titolo").textContent = c.name;
+        document.title = c.name + " - Cronache del Master";
+        document.getElementById("stato").textContent = STATI[c.status] || c.status;
+        document.getElementById("card-info").hidden = false;
+
+        document.getElementById("codice").textContent = c.invite_code;
+        document.getElementById("card-invito").hidden = false;
+        document.getElementById("copia").addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(c.invite_code);
+            showMsg(msg, "Codice copiato", "ok");
+          } catch (_) {
+            showMsg(msg, "Copia non riuscita: seleziona il codice a mano");
+          }
+        });
+
+        const { data: members } = await supabase
+          .from("campaign_members")
+          .select("user_id, role")
+          .eq("campaign_id", c.id);
+        const ids = (members || []).map((m) => m.user_id);
+        const { data: profs } = ids.length
+          ? await supabase.from("profiles").select("id, display_name").in("id", ids)
+          : { data: [] };
+        const names = Object.fromEntries((profs || []).map((p) => [p.id, p.display_name]));
+
+        const box = document.getElementById("membri");
+        for (const m of members || []) {
+          const row = document.createElement("div");
+          row.className = "user";
+          const info = document.createElement("div");
+          info.className = "info";
+          info.textContent = names[m.user_id] || "Giocatore";
+          if (m.role === "owner") {
+            const b = document.createElement("span");
+            b.className = "badge";
+            b.textContent = "creatore";
+            info.append(b);
+          }
+          row.append(info);
+          box.append(row);
+        }
+        document.getElementById("card-membri").hidden = false;
+      }
+    }
+  </script>
+</body>
+</html>
