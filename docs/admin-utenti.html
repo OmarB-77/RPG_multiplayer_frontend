@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestione utenti - Cronache del Master</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app">
+    <h1>Gestione utenti</h1>
+    <a class="btn secondary" style="background:transparent;color:inherit;border:1px solid var(--border)" href="index.html">Home</a>
+  </header>
+  <main>
+    <div id="msg" class="msg" hidden></div>
+
+    <section class="card">
+      <h2>Crea account</h2>
+      <form id="form" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="off" required>
+        <label for="nome">Nome visualizzato</label>
+        <input id="nome" type="text" autocomplete="off" required>
+        <label for="pwd">Password provvisoria (minimo 8 caratteri)</label>
+        <div class="row">
+          <input id="pwd" type="text" autocomplete="off" required minlength="8">
+          <button id="gen" type="button" class="secondary">Genera</button>
+        </div>
+        <p class="muted">Comunica la password al giocatore: al primo accesso dovra' sceglierne una sua.</p>
+        <button id="crea" type="submit">Crea account</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Utenti</h2>
+      <div id="lista"><p class="muted">Caricamento...</p></div>
+    </section>
+  </main>
+  <script type="module">
+    import { supabase } from "./js/config.js";
+    import { requireAuth, showMsg } from "./js/auth.js";
+
+    const me = await requireAuth({ admin: true });
+    if (!me) throw new Error("Accesso negato");
+
+    const msg = document.getElementById("msg");
+    const lista = document.getElementById("lista");
+    const pwd = document.getElementById("pwd");
+
+    function genPassword() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+      const buf = new Uint32Array(12);
+      crypto.getRandomValues(buf);
+      return Array.from(buf, (n) => chars[n % chars.length]).join("");
+    }
+    document.getElementById("gen").addEventListener("click", () => { pwd.value = genPassword(); });
+
+    async function call(action, payload) {
+      const { data, error } = await supabase.functions.invoke("admin-users", { body: { action, ...payload } });
+      if (error) {
+        let text = "Errore di comunicazione. Riprova.";
+        try { const j = await error.context.json(); if (j && j.error) text = j.error; } catch (_) {}
+        throw new Error(text);
+      }
+      if (data && data.error) throw new Error(data.error);
+      return data;
+    }
+
+    async function loadUsers() {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, email, role, active, must_change_password")
+        .order("display_name", { ascending: true });
+      lista.replaceChildren();
+      if (error) { lista.textContent = "Errore nel caricamento degli utenti"; return; }
+      if (!data.length) { lista.textContent = "Nessun utente"; return; }
+
+      for (const u of data) {
+        const row = document.createElement("div");
+        row.className = "user";
+
+        const info = document.createElement("div");
+        info.className = "info";
+        const name = document.createElement("strong");
+        name.textContent = u.display_name;
+        info.append(name);
+        const badges = [];
+        if (u.role === "admin") badges.push("admin");
+        if (!u.active) badges.push("disattivato");
+        else if (u.must_change_password) badges.push("primo accesso da fare");
+        for (const b of badges) {
+          const s = document.createElement("span");
+          s.className = "badge";
+          s.textContent = b;
+          info.append(s);
+        }
+        const mail = document.createElement("div");
+        mail.className = "muted";
+        mail.textContent = u.email || "";
+        info.append(mail);
+        row.append(info);
+
+        if (u.id !== me.id) {
+          const acts = document.createElement("div");
+          acts.className = "acts";
+          const mk = (label, cls, fn) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = label;
+            if (cls) b.className = cls;
+            b.addEventListener("click", fn);
+            acts.append(b);
+          };
+          mk("Reimposta password", "secondary", async () => {
+            const np = prompt("Nuova password provvisoria per " + u.display_name + " (min. 8 caratteri):", genPassword());
+            if (!np) return;
+            await run(() => call("reset_password", { user_id: u.id, password: np }),
+              "Password reimpostata. Comunicala a " + u.display_name + ": " + np);
+          });
+          mk(u.active ? "Disattiva" : "Riattiva", "secondary", () =>
+            run(() => call("set_active", { user_id: u.id, active: !u.active }),
+              u.active ? "Account disattivato" : "Account riattivato"));
+          mk("Elimina", "danger", async () => {
+            if (!confirm("Eliminare definitivamente l'account di " + u.display_name + "? Non e' reversibile.")) return;
+            await run(() => call("delete", { user_id: u.id }), "Account eliminato");
+          });
+          row.append(acts);
+        }
+        lista.append(row);
+      }
+    }
+
+    async function run(fn, okText) {
+      msg.hidden = true;
+      try {
+        await fn();
+        showMsg(msg, okText, "ok");
+        await loadUsers();
+      } catch (e) {
+        showMsg(msg, e.message);
+      }
+    }
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const display_name = document.getElementById("nome").value.trim();
+      const password = pwd.value;
+      if (!email || !display_name || password.length < 8) {
+        return showMsg(msg, "Compila email, nome e una password di almeno 8 caratteri");
+      }
+      const btn = document.getElementById("crea");
+      btn.disabled = true;
+      await run(() => call("create", { email, display_name, password }),
+        "Account creato. Comunica a " + display_name + " la password provvisoria: " + password);
+      btn.disabled = false;
+      e.target.reset();
+    });
+
+    pwd.value = genPassword();
+    await loadUsers();
+  </script>
+</body>
+</html>

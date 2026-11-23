@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accedi - Cronache del Master</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="center">
+    <form class="card" id="form" novalidate>
+      <h2>Cronache del Master</h2>
+      <p class="muted">Accesso riservato. Gli account li crea l'amministratore.</p>
+      <div id="msg" class="msg" hidden></div>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <p><button id="go" type="submit" style="width:100%">Accedi</button></p>
+    </form>
+  </div>
+  <script type="module">
+    import { supabase } from "./js/config.js";
+    import { login, loadProfile, showMsg } from "./js/auth.js";
+
+    const msg = document.getElementById("msg");
+    const form = document.getElementById("form");
+    const go = document.getElementById("go");
+
+    if (new URLSearchParams(location.search).get("msg") === "disattivato") {
+      showMsg(msg, "Il tuo account e' stato disattivato. Contatta l'amministratore.");
+    }
+
+    // Gia' autenticato? Vai avanti. Sessione orfana (utente eliminato)? Pulisci.
+    const existing = await loadProfile();
+    if (existing && existing.active) {
+      location.replace("index.html");
+    } else if (!existing) {
+      await supabase.auth.signOut();
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.hidden = true;
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      if (!email || !password) return showMsg(msg, "Inserisci email e password");
+      go.disabled = true;
+      const { error } = await login(email, password);
+      if (error) {
+        go.disabled = false;
+        return showMsg(msg, error);
+      }
+      const profile = await loadProfile();
+      if (!profile || !profile.active) {
+        await supabase.auth.signOut();
+        go.disabled = false;
+        return showMsg(msg, "Account non attivo. Contatta l'amministratore.");
+      }
+      location.replace("index.html"); // il guard manda al cambio password se serve
+    });
+  </script>
+</body>
+</html>
