@@ -1,0 +1,15 @@
+{
+  "name": "Cronache del Master",
+  "short_name": "Cronache",
+  "description": "Gioco di ruolo narrativo con il Master AI, per gruppi di amici.",
+  "lang": "it",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16130f",
+  "theme_color": "#7a2e1d",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

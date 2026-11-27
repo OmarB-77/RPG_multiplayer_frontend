@@ -1,5 +1,6 @@
 // auth.js - login, sessione e protezione delle pagine
 import { supabase } from "./config.js";
+import "./pwa.js"; // rende il sito installabile (manifest + service worker)
 
 export async function login(email, password) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
